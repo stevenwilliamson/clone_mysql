@@ -41,6 +41,15 @@ command :start do |c|
       exit_now!("Error specify a clone, do not use the main mysql directory")
     end
     mysql = Mysqld.new(CLONE_MOUNT_PATH)
+
+    if !mysql.is_main_mysqld_running?
+      puts("Setting /var/mysql and /var/mysql-logs readonly to prevent accidental writes")
+      MySQLZFSDataset.readonly('/var/mysql', true)
+      MySQLZFSDataset.readonly('/var/mysql-logs',true)
+    else
+      exit_now!("Mysql appears to be already running, ensure you cvsadm disable mysql, before continuing")
+    end
+
     mysql.start()
   end
 end
@@ -49,6 +58,9 @@ desc "Stop a running clone instance of MySQLd"
 command :stop do |c|
   c.action do
     Mysqld.stop()
+    puts("Setting /var/mysql and /var/mysql-logs back to read/write, you can svcadm start mysql now if you want.")
+    MySQLZFSDataset.readonly('/var/mysql', false)
+    MySQLZFSDataset.readonly('/var/mysql-logs', false)
   end
 end
 

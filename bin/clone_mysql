@@ -4,14 +4,35 @@ require "clone_mysql"
 require "gli"
 
 include GLI::App
+include CloneMysql
 
 program_desc 'Utility to manage MySQL clones'
+version CloneMysql::VERSION
+
 
 command :clone do |c|
-  c.flag [:d,:dataset]
-  c.action do |options,args|
-    p options
-    p args
+  c.desc "Clone a snapshot of a MySQL dataset"
+  c.flag [:s,:snapshot], :must_match => /.*\/.*@.*/, :required => true, :desc => "Snapshot to clone"
+  c.flag [:d,:dest], :required => true, :desc => "Destination dataset of the clone"
+  c.action do |global_options,options,args|
+    snapshot_to_clone = MySQLZFSDataset.new(options[:snapshot])
+    puts("Cloning #{snapshot_to_clone.to_s}")
+    snapshot_to_clone.clone_to(options[:dest])
   end
 end
 
+command :start do |c|
+  c.desc "Start an instance of MySQLd"
+  c.flag [:d,:directory], :required => true, :desc => "The root of the MySQL clone you want to use"
+
+  c.action do |global_options,options,args|
+    if options[:directory] == '/var/mysql'
+      exit_now!("Error specify a clone, do not use the main mysql directory")
+    end
+
+    mysql = Mysqld(options[:directory])
+    mysql.start_mysqld()
+  end
+end
+
+exit run(ARGV)

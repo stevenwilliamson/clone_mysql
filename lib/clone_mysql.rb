@@ -24,6 +24,30 @@ module CloneMysql
       @dataset.mounted?
     end
 
+    # Returns dataset name currently mounted at "path"
+    # or nil
+    def self.dataset_mounted_at(path)
+      pool = ZFS('zones')
+      dataset = nil
+      dataset = pool.children(recursive: true).select { |fs| fs.mountpoint.to_s == path }.first
+      if dataset == nil
+        return nil
+      end
+      return dataset.name
+    end
+
+    def self.unmount(path)
+      ZFS(path).mountpoint='none'
+    end
+
+    def self.mount(dataset, path)
+      ZFS(dataset).mountpoint=path
+    end
+
+    def self.readonly(dataset, setting)
+      ZFS(dataset).readonly = setting
+    end
+
     def exist?(dataset)
       @dataset.exist?
     end
@@ -44,7 +68,7 @@ module CloneMysql
 
     def clone_to(dest_dataset)
       if @dataset.type == :snapshot
-        if ZFS(dest_dataset).exist?
+        if ZFS(dest_dataset) != nil && ZFS(dest_dataset).exist?
           raise ArgumentError, "Clone dataset already exists"
         end
 

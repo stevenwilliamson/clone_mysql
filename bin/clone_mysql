@@ -1,17 +1,78 @@
 #!/usr/bin/env ruby
 
 require "clone_mysql"
+require "clone_mysql/mysqld"
 require "gli"
 
 include GLI::App
+include CloneMysql
 
 program_desc 'Utility to manage MySQL clones'
+version CloneMysql::VERSION
 
+CLONE_MOUNT_PATH='/var/clone-mysql'
+
+desc "Clone a snapshot of a MySQL dataset"
 command :clone do |c|
-  c.flag [:d,:dataset]
-  c.action do |options,args|
-    p options
-    p args
+  c.flag [:s,:snapshot], :must_match => /.*\/.*@.*/, :required => true, :desc => "Snapshot to clone"
+  c.flag [:d,:dest], :required => true, :desc => "Destination dataset of the clone"
+  c.action do |global_options,options,args|
+
+    if options[:dest] =~ /^\//
+      exit_now!("You appear to have passed a path as the destination, this must be a dataset, i,e it should not start with a '/'")
+    end
+
+    snapshot_to_clone = MySQLZFSDataset.new(options[:snapshot])
+    puts("Cloning #{snapshot_to_clone.to_s}")
+    snapshot_to_clone.clone_to(options[:dest])
   end
 end
 
+desc "Start a clone instance of MySQLd (Make sure you disable the main instance)"
+
+long_desc 'Expects a mysql configuration file to be at /opt/local/etc/mysql_clone.conf,
+You should ensure settings for relay logs and binary logs point to the correct place.
+Otherwise the configuration file should match the normal my.cnf config.
+Though this command will start mysql without starting slave replication.'
+command :start do |c|
+
+  c.action do |global_options,options,args|
+    if options[:directory] == '/var/mysql'
+      exit_now!("Error specify a clone, do not use the main mysql directory")
+    end
+    mysql = Mysqld.new(CLONE_MOUNT_PATH)
+    mysql.start()
+  end
+end
+
+desc "Stop a running clone instance of MySQLd"
+command :stop do |c|
+  c.action do
+    Mysqld.stop()
+  end
+end
+
+
+desc "Mount a clone ready to be accessed by mysqld, clone will be mounted to #{CLONE_MOUNT_PATH}"
+command :mount do |c|
+  c.flag [:d, :dataset], :required => true, :desc => "The dataset to mount"
+
+  c.action do |global_options,options,args|
+    already_mounted = MySQLZFSDataset.dataset_mounted_at(CLONE_MOUNT_PATH)
+    if already_mounted != nil
+      puts "Dataset #{already_mounted} is already mounted at #{CLONE_MOUNT_PATH}"
+      puts "If you would like to unmount it and mount the new dataset type 'proceed' to continue, anything else to exit."
+      answer = gets.chomp
+      if answer != "proceed"
+        puts "exiting"
+        Process.exit(0)
+      end
+      MySQLZFSDataset.unmount(already_mounted)
+    end
+
+    MySQLZFSDataset.mount(options[:dataset], CLONE_MOUNT_PATH)
+
+  end
+end
+
+exit run(ARGV)
